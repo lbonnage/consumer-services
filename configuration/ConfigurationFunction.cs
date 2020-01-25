@@ -28,6 +28,13 @@ namespace configuration
         {
             log.LogInformation("Configuration function received a request.");
 
+            // Retrieve the GUID generated for this specific configuration
+            string guid = req.Headers["Config-GUID"];
+            if (guid is null)
+            {
+                log.LogError("Error retrieving Config-GUID header");
+                return new BadRequestObjectResult("Error retrieving Config-GUID header");
+            }
 
             // Parse the message body
             BsonDocument document;
@@ -65,6 +72,8 @@ namespace configuration
             log.LogInformation("Inserting configuration into MongoDB");
             try
             {
+                // Add the GUID specified by the producer as the unique identifier for this document.  We can now link objects to this configuration via this ID.
+                document.Add("_id", guid);
                 mongoObjectCollection.InsertOne(document);
             }
             catch (Exception e)
