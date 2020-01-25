@@ -80,7 +80,7 @@ namespace data_storage
                 }
             }
 
-            // TODO Retrieve the correct configuration from the SQL database and perform the verification steps here
+            // TODO Retrieve the correct configuration from the MongoDB database and perform the verification steps here
 
             // Insert the received object into the MongoDB object collection
             log.LogInformation("Inserting document into MongoDB");
