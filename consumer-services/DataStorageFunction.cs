@@ -54,8 +54,8 @@ namespace data_storage
                 try
                 {
                     mongoClient = new MongoClient(System.Environment.GetEnvironmentVariable("MongoDBAtlasConnectionString"));
-                    mongoDataStorageDatabase = mongoClient.GetDatabase("DataStorage");
-                    mongoObjectCollection = mongoDataStorageDatabase.GetCollection<BsonDocument>("objects");
+                    mongoDataStorageDatabase = mongoClient.GetDatabase(System.Environment.GetEnvironmentVariable("DeploymentEnvironment"));
+                    mongoObjectCollection = mongoDataStorageDatabase.GetCollection<BsonDocument>("datastorage");
                     log.LogInformation("Connected to MongoDB Database");
                 } catch (Exception e)
                 {
