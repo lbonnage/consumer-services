@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "data-analysis": {
+      "commandName": "Project",
+      "commandLineArgs": "host start --pause-on-error --port 7073"
+    }
+  }
+}
