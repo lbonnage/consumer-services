@@ -22,8 +22,8 @@ namespace data_storage
         // Static MongoDB handles for maintaining a persistent connection across service calls
         static MongoClient mongoClient = null;
         static IMongoDatabase mongoConsumerDatabase = null;
-        static IMongoCollection<BsonDocument> mongoObjectCollection = null;
         static IMongoCollection<BsonDocument> mongoConfigurationCollection = null;
+        static Dictionary<string, IMongoCollection<BsonDocument>> mongoObjectCollections = new Dictionary<string, IMongoCollection<BsonDocument>>();
 
         public static readonly Dictionary<string, string> aliases = new Dictionary<string, string>()
         {
@@ -77,15 +77,15 @@ namespace data_storage
             }
 
             // In order to preserve the MongoDB client connection across Service calls, perform this check and only connect if necessary
-            if (mongoObjectCollection is null || mongoConfigurationCollection is null)
+            if (!mongoObjectCollections.ContainsKey(guid) || mongoConfigurationCollection is null)
             {
                 log.LogInformation("Connecting to MongoDB Database...");
                 try
                 {
                     mongoClient = new MongoClient(System.Environment.GetEnvironmentVariable("MongoDBAtlasConnectionString"));
                     mongoConsumerDatabase = mongoClient.GetDatabase(System.Environment.GetEnvironmentVariable("DeploymentEnvironment"));
-                    mongoObjectCollection = mongoConsumerDatabase.GetCollection<BsonDocument>("datastorage");
                     mongoConfigurationCollection = mongoConsumerDatabase.GetCollection<BsonDocument>("configurations");
+                    mongoObjectCollections[guid] = mongoConsumerDatabase.GetCollection<BsonDocument>(guid);
                     log.LogInformation("Connected to MongoDB Database");
                 }
                 catch (Exception e)
@@ -118,7 +118,7 @@ namespace data_storage
             log.LogInformation("Inserting document into MongoDB");
             try
             {
-                mongoObjectCollection.InsertOne(document);
+                mongoObjectCollections[guid].InsertOne(document);
             }
             catch (Exception e)
             {
