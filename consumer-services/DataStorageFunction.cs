@@ -11,6 +11,8 @@ using MongoDB.Driver;
 using MongoDB.Bson;
 using Npgsql;
 using System.Web.Http;
+using MongoDB.Bson.Serialization.Attributes;
+using System.Collections.Generic;
 
 namespace data_storage
 {
@@ -20,8 +22,29 @@ namespace data_storage
 
         // Static MongoDB handles for maintaining a persistent connection across service calls
         static MongoClient mongoClient = null;
-        static IMongoDatabase mongoDataStorageDatabase = null;
+        static IMongoDatabase mongoConsumerDatabase = null;
         static IMongoCollection<BsonDocument> mongoObjectCollection = null;
+        static IMongoCollection<BsonDocument> mongoConfigurationCollection = null;
+
+        public static readonly Dictionary<string, string> aliases = new Dictionary<string, string>()
+        {
+            { "String", "string" },
+            { "Int32", "int" },
+            { "Byte", "byte" },
+            { "SByte", "sbyte" },
+            { "Int16", "short" },
+            { "UInt16", "ushort" },
+            { "Int64", "long" },
+            { "UInt32", "uint" },
+            { "UInt64", "ulong" },
+            { "Single", "float" },
+            { "Double", "double" },
+            { "Decimal", "decimal" },
+            { "Object", "object" },
+            { "Boolean", "bool" },
+            { "Char", "char" },
+            { "Document", "object" } // TODO This is for a nested BsonDocument, perhaps should use something besides object
+        };
 
         // Static PostgreSQL handles for maintaining a persistent connection across service calls
         static NpgsqlConnection sqlConnection = null;
@@ -34,6 +57,15 @@ namespace data_storage
 
             log.LogInformation("DataStorage function received a request.");
 
+            // Retrieve the GUID to match data to configuration
+            string guid = req.Headers["Config-GUID"];
+            if (guid is null)
+            {
+                log.LogError("Error retrieving Config-GUID header");
+                return new BadRequestObjectResult("Error retrieving Config-GUID header");
+            }
+            log.LogInformation("Retrieved ID: " + guid);
+            
             // Parse the message body
             BsonDocument document;
             try
@@ -41,23 +73,26 @@ namespace data_storage
                 string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
                 object data = JsonConvert.DeserializeObject(requestBody);
                 document = BsonDocument.Parse(data.ToString());    // TODO is this the correct way to deserialize and read a BSON object?
-            } catch (Exception e)
+            }
+            catch (Exception e)
             {
                 log.LogError("Error parsing data: " + e.Message);
                 return new BadRequestObjectResult("Error parsing data: " + e.Message);
             }
 
             // In order to preserve the MongoDB client connection across Service calls, perform this check and only connect if necessary
-            if (mongoObjectCollection is null)
+            if (mongoObjectCollection is null || mongoConfigurationCollection is null)
             {
                 log.LogInformation("Connecting to MongoDB Database...");
                 try
                 {
                     mongoClient = new MongoClient(System.Environment.GetEnvironmentVariable("MongoDBAtlasConnectionString"));
-                    mongoDataStorageDatabase = mongoClient.GetDatabase(System.Environment.GetEnvironmentVariable("DeploymentEnvironment"));
-                    mongoObjectCollection = mongoDataStorageDatabase.GetCollection<BsonDocument>("datastorage");
+                    mongoConsumerDatabase = mongoClient.GetDatabase(System.Environment.GetEnvironmentVariable("DeploymentEnvironment"));
+                    mongoObjectCollection = mongoConsumerDatabase.GetCollection<BsonDocument>("datastorage");
+                    mongoConfigurationCollection = mongoConsumerDatabase.GetCollection<BsonDocument>("configurations");
                     log.LogInformation("Connected to MongoDB Database");
-                } catch (Exception e)
+                }
+                catch (Exception e)
                 {
                     log.LogError("Error connecting to MongoDB database: " + e.Message);
                     return new InternalServerErrorResult();
@@ -73,21 +108,39 @@ namespace data_storage
                     sqlConnection = new NpgsqlConnection(System.Environment.GetEnvironmentVariable("PostgreSQLConnectionString"));
                     sqlConnection.Open();   // TODO should this be OpenAsync()? check with Krishna
                     log.LogInformation("Connected to PostgreSQL Database");
-                } catch (Exception e)
+                }
+                catch (Exception e)
                 {
                     log.LogError("Error connecting to PostgreSQL database: " + e.Message);
                     return new InternalServerErrorResult();
                 }
             }
 
-            // TODO Retrieve the correct configuration from the MongoDB database and perform the verification steps here
+            // Retrieve the correct configuration from the MongoDB database and perform the verification steps here
+            log.LogInformation("Attempting to retrieve configuration for data");
+            BsonDocument config;
+            try
+            {
+                var filter = Builders<BsonDocument>.Filter.Eq("_id", guid);
+                config = mongoConfigurationCollection.Find<BsonDocument>(filter).First<BsonDocument>();
+            }
+            catch (Exception e)
+            {
+                log.LogError("Error retrieving configuration for data: " + e.Message);
+                return new BadRequestObjectResult("Error retrieving configuration for data: " + e.Message);
+            }
+
+            // Now you must verify the inputted object data against the configuration
+            VerifyData(config, document, log);
+            log.LogInformation("Retrieved config: " + config.GetValue("field_attributes").ToString());
 
             // Insert the received object into the MongoDB object collection
             log.LogInformation("Inserting document into MongoDB");
             try
             {
                 mongoObjectCollection.InsertOne(document);
-            } catch (Exception e)
+            }
+            catch (Exception e)
             {
                 log.LogError("Failed inserting document into MongoDB database: " + e.Message);
                 return new InternalServerErrorResult();
@@ -96,5 +149,72 @@ namespace data_storage
             return new OkObjectResult("Succeeded in inserting document.");
 
         }
+
+        /**
+         * Using the supplied configuration, checks the document for the following:
+         * - bad values
+         * - missing fields
+         * - extra fields
+         */
+        public static void VerifyData(BsonDocument config, BsonDocument document, ILogger log)
+        {
+
+            int badValueCount = 0;
+            int missingFieldsCount = 0;
+            int extraFieldsCount = 0;
+
+            //foreach (BsonDocument doc in config.field_attributes)
+            //{
+            //    System.Diagnostics.Debug.WriteLine(doc.ToString());
+            //}
+
+            foreach (BsonDocument fieldAttribute in config.GetValue("field_attributes").AsBsonArray)
+            {
+                string name = fieldAttribute.GetValue("name").ToString();
+                string type = fieldAttribute.GetValue("type").ToString();
+
+                BsonValue fieldValue;
+
+                if (document.TryGetValue(name, out fieldValue))
+                {
+
+                    string fieldType = aliases[fieldValue.BsonType.ToString()];
+
+                    // Since we have determined that the field is present, we can now check if the type matches
+                    if (fieldType == "object")
+                    {
+                        // Call VerifyData recursively on the nested object
+                        //VerifyData(fieldAttribute.GetValue("field_attributes"), fieldValue.ToBsonDocument(), log);
+                    }
+                    if (fieldType != type)
+                    {
+                        badValueCount++;
+                        log.LogError("Incorrect value type.  Received " + fieldType + " when we expected " + type + ". Bad value count is now: " +badValueCount);
+                    }
+
+                }
+                else
+                {
+                    missingFieldsCount++;
+                    log.LogError("Missing field " + type + ".  Missing fields count is now: " + missingFieldsCount);
+                }
+
+            }
+
+            // Calculate the number of extra fields in the document
+            //int expectedNumberOfFields = config.field_attributes.ToList().Count;
+
+
+        }
+
     }
+
+    //public class Configuration
+    //{
+    //    [BsonId]
+    //    public string Id { get; set; }
+
+    //    public BsonArray field_attributes { get; set; }
+    //}
+
 }

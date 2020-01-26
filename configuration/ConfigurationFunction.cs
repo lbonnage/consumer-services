@@ -18,8 +18,8 @@ namespace configuration
 
         // Static MongoDB handles for maintaining a persistent connection across service calls
         static MongoClient mongoClient = null;
-        static IMongoDatabase mongoDataStorageDatabase = null;
-        static IMongoCollection<BsonDocument> mongoObjectCollection = null;
+        static IMongoDatabase mongoConsumerDatabase = null;
+        static IMongoCollection<BsonDocument> mongoConfigurationCollection = null;
 
         [FunctionName("Configuration")]
         public static async Task<IActionResult> Run(
@@ -51,14 +51,14 @@ namespace configuration
             }
 
             // In order to preserve the MongoDB client connection across Service calls, perform this check and only connect if necessary
-            if (mongoObjectCollection is null)
+            if (mongoConfigurationCollection is null)
             {
                 log.LogInformation("Connecting to MongoDB Database...");
                 try
                 {
                     mongoClient = new MongoClient(System.Environment.GetEnvironmentVariable("MongoDBAtlasConnectionString"));
-                    mongoDataStorageDatabase = mongoClient.GetDatabase(System.Environment.GetEnvironmentVariable("DeploymentEnvironment"));
-                    mongoObjectCollection = mongoDataStorageDatabase.GetCollection<BsonDocument>("configurations");
+                    mongoConsumerDatabase = mongoClient.GetDatabase(System.Environment.GetEnvironmentVariable("DeploymentEnvironment"));
+                    mongoConfigurationCollection = mongoConsumerDatabase.GetCollection<BsonDocument>("configurations");
                     log.LogInformation("Connected to MongoDB Database");
                 }
                 catch (Exception e)
@@ -74,7 +74,7 @@ namespace configuration
             {
                 // Add the GUID specified by the producer as the unique identifier for this document.  We can now link objects to this configuration via this ID.
                 document.Add("_id", guid);
-                mongoObjectCollection.InsertOne(document);
+                mongoConfigurationCollection.InsertOne(document);
             }
             catch (Exception e)
             {
