@@ -9,7 +9,6 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using MongoDB.Driver;
 using MongoDB.Bson;
-using Npgsql;
 using System.Web.Http;
 using MongoDB.Bson.Serialization.Attributes;
 using System.Collections.Generic;
@@ -45,9 +44,6 @@ namespace data_storage
             { "Char", "char" },
             { "Document", "object" } // TODO This is for a nested BsonDocument, perhaps should use something besides object
         };
-
-        // Static PostgreSQL handles for maintaining a persistent connection across service calls
-        static NpgsqlConnection sqlConnection = null;
 
         [FunctionName("DataStorage")]
         public static async Task<IActionResult> Run(
@@ -99,23 +95,6 @@ namespace data_storage
                 }
             }
 
-            // In order to preserve the PostgreSQL connection across Service calls, perform this check and only connect if necessary
-            if (sqlConnection is null)
-            {
-                log.LogInformation("Connecting to PostgreSQL Database...");
-                try
-                {
-                    sqlConnection = new NpgsqlConnection(System.Environment.GetEnvironmentVariable("PostgreSQLConnectionString"));
-                    sqlConnection.Open();   // TODO should this be OpenAsync()? check with Krishna
-                    log.LogInformation("Connected to PostgreSQL Database");
-                }
-                catch (Exception e)
-                {
-                    log.LogError("Error connecting to PostgreSQL database: " + e.Message);
-                    return new InternalServerErrorResult();
-                }
-            }
-
             // Retrieve the correct configuration from the MongoDB database and perform the verification steps here
             log.LogInformation("Attempting to retrieve configuration for data");
             BsonDocument config;
@@ -130,9 +109,10 @@ namespace data_storage
                 return new BadRequestObjectResult("Error retrieving configuration for data: " + e.Message);
             }
 
+            log.LogInformation("Retrieved configuration: " + config.GetValue("field_attributes").ToString());
+
             // Now you must verify the inputted object data against the configuration
             VerifyData(config, document, log);
-            log.LogInformation("Retrieved config: " + config.GetValue("field_attributes").ToString());
 
             // Insert the received object into the MongoDB object collection
             log.LogInformation("Inserting document into MongoDB");
@@ -158,6 +138,7 @@ namespace data_storage
          */
         public static void VerifyData(BsonDocument config, BsonDocument document, ILogger log)
         {
+            log.LogInformation("Beginning verification of data");
 
             int badValueCount = 0;
             int missingFieldsCount = 0;
