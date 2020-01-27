@@ -107,19 +107,24 @@ namespace data_analysis
             }
 
             // Retrieve a cursor to the objects in the appropriate collection
-            log.LogInformation("Attempting to retrieve cursor for collection: " + guid);
-            IAsyncCursor<BsonDocument> cursor;
+            log.LogInformation("Attempting to retrieve list for collection: " + guid);
+            List<BsonDocument> documents;
             try
             {
-                cursor = mongoObjectCollections[guid].Find<BsonDocument>(f => true).ToCursor();
+                documents = mongoObjectCollections[guid].Find<BsonDocument>(f => true).ToCursor().ToList();
             } catch (Exception e)
             {
                 log.LogError("Error retrieving collection for data: " + e.Message);
                 return new BadRequestObjectResult("Error retrieving collection for data: " + e.Message);
             }
 
+            BsonArray statisticalAnalysis = analysis.StatisticalAnalysis;
+
             // Iterate over all the documents in the collection and perform the analysis step on them
-            StatisticalAnalysis(ref analysis, config, cursor, log);
+            foreach (BsonDocument document in documents)
+            {
+                StatisticalAnalysis(ref statisticalAnalysis, config, document, log);
+            }
 
             // Return the completed analysis to the requestor
             return new OkObjectResult(analysis.ToJson());
@@ -131,10 +136,56 @@ namespace data_analysis
          *  - Mean (numerical values)
          *  - Standard deviation (numerical values)
          */
-        public static void StatisticalAnalysis(ref AnalysisDocument analysis, BsonDocument config, IAsyncCursor<BsonDocument> cursor, ILogger log)
+        public static void StatisticalAnalysis(ref BsonArray statisticalAnalysis, BsonDocument config, BsonDocument document, ILogger log)
         {
-
             
+            foreach (BsonDocument fieldStatistic in statisticalAnalysis)
+            {
+                string name = fieldStatistic.GetValue("name").ToString();
+                string type = fieldStatistic.GetValue("type").ToString();
+
+                if (document.ContainsValue(name))
+                {
+                    BsonValue value = document.GetValue(name);
+                    BsonArray values = document.GetValue("values").AsBsonArray;
+                    fieldStatistic.Set("count", fieldStatistic.GetValue("count").AsInt32 + 1);
+
+                    // Calculate mean and standard deviation with numerical 
+                    if (numericalTypes.Contains(type))
+                    {
+                        switch (type)
+                        {
+                            case "int":
+                                int intValue = value.AsInt32;
+                                break;
+                            case "short":
+                                break;
+                            case "ushort":
+                                break;
+                            case "long":
+                                long longValue = value.AsInt64;
+                                break;
+                            case "uint":
+                                break;
+                            case "ulong":
+                                break;
+                            case "float":
+                                break;
+                            case "double":
+                                double doubleValue = value.AsDouble;
+                                break;
+                            case "decimal":
+                                decimal decimalValue = value.AsDecimal;
+                                break;
+                        }
+                    } else if (type == "customobject")
+                    {
+
+                    }
+
+                }
+
+            }
 
         }
 

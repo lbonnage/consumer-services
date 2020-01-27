@@ -12,6 +12,7 @@ using MongoDB.Bson;
 using System.Web.Http;
 using MongoDB.Bson.Serialization.Attributes;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace data_storage
 {
@@ -43,7 +44,7 @@ namespace data_storage
             { "Object", "object" },
             { "Boolean", "bool" },
             { "Char", "char" },
-            { "Document", "object" } // TODO This is for a nested BsonDocument, perhaps should use something besides object
+            { "Document", "customobject" }
         };
 
         [FunctionName("DataStorage")]
@@ -128,13 +129,18 @@ namespace data_storage
             }
 
             // Now you must verify the inputted object data against the configuration
-            RobustnessAnalysis(config, document, log);
+            int badValuesCount, missingFieldsCount, extraFieldsCount;
+            (badValuesCount, missingFieldsCount, extraFieldsCount) = RobustnessAnalysis(document, config, log);
+            log.LogInformation("Performed Robustness Analysis: " + badValuesCount + " " + missingFieldsCount + " " + extraFieldsCount);
 
-            // Insert the analysis into the MongoDB analysis collection
+            // Adjust the analysis with the appropriate values and insert the analysis into the MongoDB analysis collection
+            analysis.BadValueCount += badValuesCount > 0 ? 1 : 0;
+            analysis.MissingFieldCount += missingFieldsCount > 0 ? 1 : 0;
+            analysis.ExtraFieldCount += extraFieldsCount > 0 ? 1 : 0;
             log.LogInformation("Inserting analysis into MongoDB");
             try
             {
-                mongoAnalysisCollection.InsertOne(analysis);
+                mongoAnalysisCollection.ReplaceOne<AnalysisDocument>((doc => doc.ID == guid), analysis);
             }
             catch (Exception e)
             {
@@ -142,16 +148,24 @@ namespace data_storage
                 return new InternalServerErrorResult();
             }
 
-            // Insert the received object into the MongoDB object collection
-            log.LogInformation("Inserting document into MongoDB");
-            try
+            if (badValuesCount > 0 || missingFieldsCount > 0 || extraFieldsCount > 0)
             {
-                mongoObjectCollections[guid].InsertOne(document);
+                log.LogInformation("Record had some issue, not inserting into database.");
+                return new BadRequestObjectResult("Error(s) parsing record, not inserting into database");
             }
-            catch (Exception e)
+            else
             {
-                log.LogError("Failed inserting document into MongoDB database: " + e.Message);
-                return new InternalServerErrorResult();
+                // Insert the received object into the MongoDB object collection
+                log.LogInformation("Inserting document into MongoDB");
+                try
+                {
+                    mongoObjectCollections[guid].InsertOne(document);
+                }
+                catch (Exception e)
+                {
+                    log.LogError("Failed inserting document into MongoDB database: " + e.Message);
+                    return new InternalServerErrorResult();
+                }
             }
 
             return new OkObjectResult("Succeeded in inserting document.");
@@ -159,59 +173,143 @@ namespace data_storage
         }
 
         /**
+         * 
          * Using the supplied configuration, checks the document for the following:
          * - bad values
          * - missing fields
          * - extra fields
          */
-        public static void RobustnessAnalysis(BsonDocument config, BsonDocument document, ILogger log)
+        public static (int, int, int) RobustnessAnalysis(BsonDocument document, BsonDocument config, ILogger log)
         {
-            log.LogInformation("Beginning robustness analysis of data");
 
-            int badValueCount = 0;
-            int missingFieldsCount = 0;
-            int extraFieldsCount = 0;
+            int badValuesCount = 0, missingFieldsCount = 0, extraFieldsCount = 0;
 
-            //foreach (BsonDocument doc in config.field_attributes)
-            //{
-            //    System.Diagnostics.Debug.WriteLine(doc.ToString());
-            //}
+            // Create a dictionary mapping the field name to its corresponding document
+            Dictionary<string, BsonDocument> expectedTypes = new Dictionary<string, BsonDocument>();
+            config.GetValue("field_attributes").AsBsonArray.ToList().ForEach(val => expectedTypes[val.AsBsonDocument["name"].AsString] = val.AsBsonDocument);
+            
+            // Create lists of the string names of the expected fields and the string names of the actual fields
+            List<string> expectedFields = config.GetValue("field_attributes").AsBsonArray.ToList().ConvertAll<string>(val => val.AsBsonDocument.GetElement("name").Value.AsString);
+            List<string> actualFields = document.Elements.ToList().ConvertAll<string>(val => val.Name);
 
-            foreach (BsonDocument fieldAttribute in config.GetValue("field_attributes").AsBsonArray)
+            // Create a list of extra fields to remove from the document once iteration is completed
+            List<string> extraFields = new List<string>();
+
+            foreach (BsonElement element in document)
             {
-                string name = fieldAttribute.GetValue("name").ToString();
-                string type = fieldAttribute.GetValue("type").ToString();
 
-                BsonValue fieldValue;
+                string name = element.Name;
+                BsonValue value = element.Value;
 
-                if (document.TryGetValue(name, out fieldValue))
+                BsonDocument expectedDocument;
+
+                // Check if the field exists in the config
+                if (expectedTypes.TryGetValue(name, out expectedDocument))
                 {
 
-                    string fieldType = aliases[fieldValue.BsonType.ToString()];
+                    string expectedType = expectedDocument["type"].AsString;
 
-                    // Since we have determined that the field is present, we can now check if the type matches
-                    if (fieldType == "object")
+                    // Check if the field has the correct type
+                    string fieldType = aliases[value.BsonType.ToString()];
+                    if (expectedType == fieldType)
                     {
-                        // Call RobustnessAnalysis recursively on the nested object
-                        //RobustnessAnalysis(fieldAttribute.GetValue("field_attributes"), fieldValue.ToBsonDocument(), log);
-                    }
-                    if (fieldType != type)
+
+                        if (fieldType == "customobject")
+                        {
+                            // Call RobustnessAnalysis recursively on the nested object
+                            int nestedBadValuesCount, nestedMissingFieldsCount, nestedExtraFieldsCount;
+                            BsonDocument nestedDocument = value.AsBsonDocument;
+                            (nestedBadValuesCount, nestedMissingFieldsCount, nestedExtraFieldsCount) = RobustnessAnalysis(nestedDocument, expectedDocument, log);
+
+                            badValuesCount += nestedBadValuesCount;
+                            missingFieldsCount += nestedMissingFieldsCount;
+                            extraFieldsCount += nestedExtraFieldsCount;
+                        }
+
+                    } else
                     {
-                        badValueCount++;
-                        log.LogError("Incorrect value type.  Received " + fieldType + " when we expected " + type + ". Bad value count is now: " +badValueCount);
+                        badValuesCount++;
+                        log.LogError("Incorrect value type.  Received " + fieldType + " when we expected " + expectedType + ".");
                     }
 
-                }
-                else
+
+                } else
                 {
-                    missingFieldsCount++;
-                    log.LogError("Missing field " + type + ".  Missing fields count is now: " + missingFieldsCount);
+                    extraFields.Add(name);
+                    extraFieldsCount++;
+                    log.LogError("Extra field detected.  Received field " + name + ".");
                 }
 
             }
 
-            // Calculate the number of extra fields in the document
-            //int expectedNumberOfFields = config.field_attributes.ToList().Count;
+            // Check for missing fields
+            foreach (string expectedField in expectedFields)
+            {
+                if (!actualFields.Contains(expectedField))
+                {
+                    missingFieldsCount++;
+                    log.LogError("Missing field detected.  Missing field " + expectedField + ".");
+                }
+            }
+
+            //// Remove all of the extra fields
+            //foreach (string extraField in extraFields) {
+            //    document.Remove(extraField);
+            //}
+
+            //foreach (BsonDocument fieldAttribute in config.GetValue("field_attributes").AsBsonArray)
+            //{
+            //    string name = fieldAttribute.GetValue("name").ToString();
+            //    string type = fieldAttribute.GetValue("type").ToString();
+
+            //    BsonValue fieldValue;
+
+            //    if (document.TryGetValue(name, out fieldValue))
+            //    {
+
+            //        string fieldType = aliases[fieldValue.BsonType.ToString()];
+
+            //        // Since we have determined that the field is present, we can now check if the type matches
+            //        if (fieldType == "customobject")
+            //        {
+            //            // Call RobustnessAnalysis recursively on the nested object
+            //            int nestedBadValuesCount, nestedMissingFieldsCount, nestedExtraFieldsCount;
+            //            (nestedBadValuesCount, nestedMissingFieldsCount, nestedExtraFieldsCount) = RobustnessAnalysis(fieldAttribute, fieldValue.ToBsonDocument(), log);
+            //            badValuesCount += nestedBadValuesCount;
+            //            missingFieldsCount += nestedMissingFieldsCount;
+            //            extraFieldsCount += nestedExtraFieldsCount;
+            //        }
+            //        if (fieldType != type)
+            //        {
+            //            badValuesCount++;
+            //            log.LogError("Incorrect value type.  Received " + fieldType + " when we expected " + type + ". Bad value count is now: " + badValuesCount);
+            //        }
+
+            //    }
+            //    else
+            //    {
+            //        missingFieldsCount++;
+            //        log.LogError("Missing field " + type + ".  Missing fields count is now: " + missingFieldsCount);
+            //    }
+
+            //}
+
+            //// Calculate the number of extra fields in the document and remove them so they won't get stored
+            //int expectedNumberOfFields = config.GetValue("field_attributes").AsBsonArray.ToList().Count;
+            //int totalNumberOfFields = document.ElementCount;
+            //extraFieldsCount = totalNumberOfFields - (expectedNumberOfFields - missingFieldsCount);
+
+            ////List<string> expectedFields = config.GetValue("field_attributes").AsBsonArray.ToList().ConvertAll<string>(val => val.AsBsonDocument.GetElement("name").Value.AsString);
+
+            //foreach(BsonElement element in document)
+            //{
+            //    string name = element.Name;
+
+            //    log.LogInformation(expectedFields[0].ToString());
+
+            //}
+
+            return (badValuesCount, missingFieldsCount, extraFieldsCount);
 
 
         }
