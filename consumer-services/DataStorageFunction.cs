@@ -79,7 +79,7 @@ namespace data_storage
             }
 
             // In order to preserve the MongoDB client connection across Service calls, perform this check and only connect if necessary
-            if (!mongoObjectCollections.ContainsKey(guid) || mongoConfigurationCollection is null)
+            if (mongoClient is null)
             {
                 log.LogInformation("Connecting to MongoDB Database...");
                 try
@@ -88,12 +88,25 @@ namespace data_storage
                     mongoConsumerDatabase = mongoClient.GetDatabase(System.Environment.GetEnvironmentVariable("DeploymentEnvironment"));
                     mongoConfigurationCollection = mongoConsumerDatabase.GetCollection<BsonDocument>("configurations");
                     mongoAnalysisCollection = mongoConsumerDatabase.GetCollection<AnalysisDocument>("analysis");
-                    mongoObjectCollections[guid] = mongoConsumerDatabase.GetCollection<BsonDocument>(guid);
                     log.LogInformation("Connected to MongoDB Database");
                 }
                 catch (Exception e)
                 {
                     log.LogError("Error connecting to MongoDB database: " + e.Message);
+                    return new InternalServerErrorResult();
+                }
+            }
+
+            // Make sure you have a handle to the collection for this kind of object
+            if (!mongoObjectCollections.ContainsKey(guid))
+            {
+                try
+                {
+                    mongoObjectCollections[guid] = mongoConsumerDatabase.GetCollection<BsonDocument>(guid);
+                }
+                catch (Exception e)
+                {
+                    log.LogError("Error retrieving object collection from MongoDB database: " + e.Message);
                     return new InternalServerErrorResult();
                 }
             }
@@ -111,36 +124,33 @@ namespace data_storage
                 log.LogError("Error retrieving configuration for data: " + e.Message);
                 return new BadRequestObjectResult("Error retrieving configuration for data: " + e.Message);
             }
-
             log.LogInformation("Retrieved configuration: " + config.GetValue("field_attributes").ToString());
-
-            // Retrieve the correct analysis document from the MongoDB database.  If one doesn't exist for this ID, create one.
-            log.LogInformation("Attempting to retrieve analysis for ID: " + guid);
-            AnalysisDocument analysis;
-            try
-            {
-                FilterDefinition<AnalysisDocument> filter = Builders<AnalysisDocument>.Filter.Eq("_id", guid);
-                analysis = mongoAnalysisCollection.Find<AnalysisDocument>(filter).First<AnalysisDocument>();
-            }
-            catch (Exception e)
-            {
-                log.LogError("Error retrieving analysis for data: " + e.Message);
-                return new BadRequestObjectResult("Error retrieving configuration for data: " + e.Message);
-            }
 
             // Now you must verify the inputted object data against the configuration
             int badValuesCount, missingFieldsCount, extraFieldsCount;
             (badValuesCount, missingFieldsCount, extraFieldsCount) = RobustnessAnalysis(document, config, log);
             log.LogInformation("Performed Robustness Analysis: " + badValuesCount + " " + missingFieldsCount + " " + extraFieldsCount);
 
-            // Adjust the analysis with the appropriate values
-            analysis.BadValueCount += badValuesCount > 0 ? 1 : 0;
-            analysis.MissingFieldCount += missingFieldsCount > 0 ? 1 : 0;
-            analysis.ExtraFieldCount += extraFieldsCount > 0 ? 1 : 0;
+            // Update the analysis in the MongoDB database with these new values
+            try
+            {
+                FilterDefinition<AnalysisDocument> filter = Builders<AnalysisDocument>.Filter.Eq("_id", guid);
+                var update = Builders<AnalysisDocument>.Update
+                    .Inc("NumberOfRecords", 1)
+                    .Inc("BadValueCount", badValuesCount > 0 ? 1 : 0)
+                    .Inc("MissingFieldCount", missingFieldsCount > 0 ? 1 : 0)
+                    .Inc("ExtraFieldCount", extraFieldsCount > 0 ? 1 : 0);
+                mongoAnalysisCollection.UpdateOne(filter, update);
+            } catch (Exception e)
+            {
+                log.LogError("Failed updating analysis document in MongoDB database: " + e.Message);
+                return new InternalServerErrorResult();
+            }
 
             if (badValuesCount > 0 || missingFieldsCount > 0 || extraFieldsCount > 0)
             {
                 log.LogInformation("Record had some issue, not inserting into database.");
+
                 return new BadRequestObjectResult("Error(s) parsing record, not inserting into database");
             }
             else
@@ -158,19 +168,8 @@ namespace data_storage
                 }
 
                 // Increment the record count to reflect this insertion
-                analysis.NumberOfRecords += 1;
-            }
-
-            // Insert the analysis into the MongoDB analysis collection
-            log.LogInformation("Inserting analysis into MongoDB");
-            try
-            {
-                mongoAnalysisCollection.ReplaceOne<AnalysisDocument>((doc => doc.ID == guid), analysis);
-            }
-            catch (Exception e)
-            {
-                log.LogError("Failed inserting analysis document into MongoDB database: " + e.Message);
-                return new InternalServerErrorResult();
+                var update = Builders<AnalysisDocument>.Update
+                    .Inc("NumberOfRecords", 1);
             }
 
             return new OkObjectResult("Succeeded in inserting document.");
