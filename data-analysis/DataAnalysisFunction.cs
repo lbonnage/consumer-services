@@ -106,25 +106,11 @@ namespace data_analysis
                 return new BadRequestObjectResult("Error retrieving configuration for data: " + e.Message);
             }
 
-            // Retrieve a cursor to the objects in the appropriate collection
-            log.LogInformation("Attempting to retrieve list for collection: " + guid);
-            List<BsonDocument> documents;
-            try
-            {
-                documents = mongoObjectCollections[guid].Find<BsonDocument>(f => true).ToCursor().ToList();
-            } catch (Exception e)
-            {
-                log.LogError("Error retrieving collection for data: " + e.Message);
-                return new BadRequestObjectResult("Error retrieving collection for data: " + e.Message);
-            }
-
+            // Perform statistical analysis on the documents in the desired collection
             BsonArray statisticalAnalysis = analysis.StatisticalAnalysis;
+            StatisticalAnalysis(ref statisticalAnalysis, mongoObjectCollections[guid], "", log);
 
-            // Iterate over all the documents in the collection and perform the analysis step on them
-            foreach (BsonDocument document in documents)
-            {
-                StatisticalAnalysis(ref statisticalAnalysis, config, document, log);
-            }
+            analysis.StatisticalAnalysis = statisticalAnalysis;
 
             // Return the completed analysis to the requestor
             return new OkObjectResult(analysis.ToJson());
@@ -136,53 +122,34 @@ namespace data_analysis
          *  - Mean (numerical values)
          *  - Standard deviation (numerical values)
          */
-        public static void StatisticalAnalysis(ref BsonArray statisticalAnalysis, BsonDocument config, BsonDocument document, ILogger log)
+         public static void StatisticalAnalysis(ref BsonArray statisticalAnalysis, IMongoCollection<BsonDocument> collection, string path, ILogger log)
         {
-            
+
             foreach (BsonDocument fieldStatistic in statisticalAnalysis)
             {
+                
                 string name = fieldStatistic.GetValue("name").ToString();
                 string type = fieldStatistic.GetValue("type").ToString();
 
-                if (document.ContainsValue(name))
+                if (numericalTypes.Contains(type))
                 {
-                    BsonValue value = document.GetValue(name);
-                    BsonArray values = document.GetValue("values").AsBsonArray;
-                    fieldStatistic.Set("count", fieldStatistic.GetValue("count").AsInt32 + 1);
 
-                    // Calculate mean and standard deviation with numerical 
-                    if (numericalTypes.Contains(type))
+                    string fieldPath = "$" + path + (path.Length == 0 ? "" : ".") + name;
+
+                    var pipeline = new BsonDocument[]
                     {
-                        switch (type)
-                        {
-                            case "int":
-                                int intValue = value.AsInt32;
-                                break;
-                            case "short":
-                                break;
-                            case "ushort":
-                                break;
-                            case "long":
-                                long longValue = value.AsInt64;
-                                break;
-                            case "uint":
-                                break;
-                            case "ulong":
-                                break;
-                            case "float":
-                                break;
-                            case "double":
-                                double doubleValue = value.AsDouble;
-                                break;
-                            case "decimal":
-                                decimal decimalValue = value.AsDecimal;
-                                break;
-                        }
-                    } else if (type == "customobject")
-                    {
+                        new BsonDocument { { "$group", new BsonDocument { { "_id", BsonNull.Value }, { "mean", new BsonDocument { {"$avg", fieldPath  } } }, { "standard deviation", new BsonDocument { { "$stdDevPop", fieldPath } } } } } }
+                    };
 
-                    }
+                    BsonDocument result = collection.Aggregate<BsonDocument>(pipeline).First<BsonDocument>();
 
+                    fieldStatistic.Set("mean", result.GetValue("mean"));
+                    fieldStatistic.Set("standard deviation", result.GetValue("standard deviation"));
+
+                } else if (type == "customobject")
+                {
+                    BsonArray nestedStatisticalAnalysis = fieldStatistic.GetValue("StatisticalAnalysis").AsBsonArray;
+                    StatisticalAnalysis(ref nestedStatisticalAnalysis, collection, (path.Length == 0 ? "" : path + ".") + name, log);
                 }
 
             }

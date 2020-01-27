@@ -125,14 +125,12 @@ namespace configuration
                 BsonDocument fieldStatistics = new BsonDocument {
                     { "name", name },   // The name of the field
                     { "type", type },
-                    { "count", 0 }      // The number of these values viewed
                 };
 
                 if (numericalTypes.Contains(type))
                 {
                     fieldStatistics.Add("mean", 0);
                     fieldStatistics.Add("standard deviation", 0);
-                    fieldStatistics.Add("values", new BsonArray());
                 }
                 else if (type == "customobject")
                 {
