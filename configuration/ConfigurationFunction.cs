@@ -132,6 +132,13 @@ namespace configuration
                 {
                     fieldStatistics.Add("mean", 0);
                     fieldStatistics.Add("standard deviation", 0);
+                    fieldStatistics.Add("values", new BsonArray());
+                }
+                else if (type == "customobject")
+                {
+                    BsonArray nestedStatisticalAnalysis;
+                    ConstructStatisticalAnalysisDocument(out nestedStatisticalAnalysis, fieldAttribute);
+                    fieldStatistics.Add("StatisticalAnalysis", nestedStatisticalAnalysis);
                 }
 
                 statisticalAnalysis.Add(fieldStatistics);
