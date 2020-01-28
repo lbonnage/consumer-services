@@ -32,7 +32,7 @@ namespace data_analysis
 
         [FunctionName("DataAnalysis")]
         public static async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Function, "get", Route = null)] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "DataAnalysis")] HttpRequest req,
             ILogger log)
         {
             log.LogInformation("Data analysis function received a request");

@@ -49,7 +49,7 @@ namespace data_storage
 
         [FunctionName("DataStorage")]
         public static async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "DataStorage")] HttpRequest req,
             ILogger log)
         {
 

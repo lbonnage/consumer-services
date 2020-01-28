@@ -29,7 +29,7 @@ namespace configuration
 
         [FunctionName("Configuration")]
         public static async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "Configuration")] HttpRequest req,
             ILogger log)
         {
             log.LogInformation("Configuration function received a request.");

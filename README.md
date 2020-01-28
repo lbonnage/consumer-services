@@ -1,7 +1,7 @@
 
 # Warmup Project Consumer
 
-Navigation: [Project Wiki](https://laser.cs.rice.edu/classes/comp410/s20/_layouts/15/start.aspx#/SitePages/Warmup%20Team%20B.aspx) | [Producer Repository](https://example.com) | **Consumer Repository**
+Navigation: [Project Wiki](https://laser.cs.rice.edu/classes/comp410/s20/_layouts/15/start.aspx#/SitePages/Warmup%20Team%20B.aspx) | [Producer Repository](https://github.com/XinchengTan/ProducerAzureFunction) | **Consumer Repository**
 
 ## Description
 This is the source code for Team A's Warmup Project Consumer.  This consumer is capable of accepting and analyzing highly-customizable data records sent via HTTP.
@@ -12,6 +12,7 @@ Our consumer is split into three microservices, each built using an Azure Functi
 **Data Storage Service**: This service is used to accept and store data records sent to the consumer.
 
 **Data Analysis Service**: This service is used to retrieve analysis on data records previously accepted by the consumer.  This analysis is performed on all of the data records of a single type, with types being determined by the configurations sent to the Configuration Service.
+
 Here is an image depicting the various services and their connectivity:
 
 ![Services](https://i.imgur.com/Tm1kbZ0.png)
