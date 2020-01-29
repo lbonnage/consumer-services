@@ -13,6 +13,7 @@ using System.Web.Http;
 using MongoDB.Bson.Serialization.Attributes;
 using System.Collections.Generic;
 using System.Linq;
+using TestInstrumentation;
 
 namespace data_storage
 {
@@ -26,6 +27,9 @@ namespace data_storage
         static IMongoCollection<BsonDocument> mongoConfigurationCollection = null;
         static IMongoCollection<AnalysisDocument> mongoAnalysisCollection = null;
         static Dictionary<string, IMongoCollection<BsonDocument>> mongoObjectCollections = new Dictionary<string, IMongoCollection<BsonDocument>>();
+
+        // Static handle to our CustomLogger
+        static CustomLogger customLog = null;
 
         static readonly Dictionary<string, string> aliases = new Dictionary<string, string>()
         {
@@ -53,13 +57,30 @@ namespace data_storage
             ILogger log)
         {
 
-            log.LogInformation("DataStorage function received a request.");
+            log.LogInformation("DataStorage function received a request");
+
+            // Connect to our CustomLogger instance
+            if (customLog is null)
+            {
+                try
+                {
+                    customLog = new CustomLogger("DataStorage");
+                }
+                catch (Exception e)
+                {
+                    log.LogError("Failed connecting to custom logger: " + e);
+                    return new InternalServerErrorResult();
+                }
+            }
+
+            customLog.RawLog("INFO", "Data storage function received a request");
 
             // Retrieve the GUID to match data to configuration
             string guid = req.Headers["Config-GUID"];
             if (guid is null)
             {
                 log.LogError("Error retrieving Config-GUID header");
+                customLog.RawLog("ERROR", "Error retrieving Config-GUID header");
                 return new BadRequestObjectResult("Error retrieving Config-GUID header");
             }
             log.LogInformation("Retrieved ID: " + guid);
@@ -75,6 +96,7 @@ namespace data_storage
             catch (Exception e)
             {
                 log.LogError("Error parsing data: " + e.Message);
+                customLog.RawLog("ERROR", "Error parsing data: " + e.Message);
                 return new BadRequestObjectResult("Error parsing data: " + e.Message);
             }
 
@@ -93,6 +115,7 @@ namespace data_storage
                 catch (Exception e)
                 {
                     log.LogError("Error connecting to MongoDB database: " + e.Message);
+                    customLog.RawLog("FATAL", "Error connecting to MongoDB database: " + e.Message);
                     return new InternalServerErrorResult();
                 }
             }
@@ -107,6 +130,7 @@ namespace data_storage
                 catch (Exception e)
                 {
                     log.LogError("Error retrieving object collection from MongoDB database: " + e.Message);
+                    customLog.RawLog("ERROR", "Error retrieving object collection from MongoDB database: " + e.Message);
                     return new InternalServerErrorResult();
                 }
             }
@@ -122,6 +146,7 @@ namespace data_storage
             catch (Exception e)
             {
                 log.LogError("Error retrieving configuration for data: " + e.Message);
+                customLog.RawLog("ERROR", "Error retrieving configuration for data: " + e.Message);
                 return new BadRequestObjectResult("Error retrieving configuration for data: " + e.Message);
             }
             log.LogInformation("Retrieved configuration: " + config.GetValue("field_attributes").ToString());
@@ -130,6 +155,7 @@ namespace data_storage
             int badValuesCount, missingFieldsCount, extraFieldsCount;
             (badValuesCount, missingFieldsCount, extraFieldsCount) = RobustnessAnalysis(document, config, log);
             log.LogInformation("Performed Robustness Analysis: " + badValuesCount + " " + missingFieldsCount + " " + extraFieldsCount);
+            customLog.RawLog("INFO", "Performed Robustness Analysis: " + badValuesCount + " " + missingFieldsCount + " " + extraFieldsCount);
 
             // Update the analysis in the MongoDB database with these new values
             try
@@ -144,14 +170,15 @@ namespace data_storage
             } catch (Exception e)
             {
                 log.LogError("Failed updating analysis document in MongoDB database: " + e.Message);
+                customLog.RawLog("ERROR", "Failed updating analysis document in MongoDB database: " + e.Message);
                 return new InternalServerErrorResult();
             }
 
             if (badValuesCount > 0 || missingFieldsCount > 0 || extraFieldsCount > 0)
             {
-                log.LogInformation("Record had some issue, not inserting into database.");
-
-                return new BadRequestObjectResult("Error(s) parsing record, not inserting into database");
+                log.LogInformation("Record had some issue, not inserting into database");
+                customLog.RawLog("ERROR", "Record had some issue, not inserting into database");
+                return new BadRequestObjectResult("Record had some issue, not inserting into database");
             }
             else
             {
@@ -164,6 +191,7 @@ namespace data_storage
                 catch (Exception e)
                 {
                     log.LogError("Failed inserting document into MongoDB database: " + e.Message);
+                    customLog.RawLog("ERROR", "Failed inserting document into MongoDB database: " + e.Message);
                     return new InternalServerErrorResult();
                 }
 
@@ -172,7 +200,8 @@ namespace data_storage
                     .Inc("NumberOfRecords", 1);
             }
 
-            return new OkObjectResult("Succeeded in inserting document.");
+            customLog.RawLog("INFO", "Succeeded in inserting document with ID: " + guid);
+            return new OkObjectResult("Succeeded in inserting document");
 
         }
 

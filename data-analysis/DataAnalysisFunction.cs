@@ -12,6 +12,7 @@ using MongoDB.Bson;
 using System.Collections.Generic;
 using MongoDB.Bson.Serialization.Attributes;
 using System.Web.Http;
+using TestInstrumentation;
 
 namespace data_analysis
 {
@@ -26,6 +27,9 @@ namespace data_analysis
         static IMongoCollection<AnalysisDocument> mongoAnalysisCollection = null;
         static Dictionary<string, IMongoCollection<BsonDocument>> mongoObjectCollections = new Dictionary<string, IMongoCollection<BsonDocument>>();
 
+        // Static handle to our CustomLogger
+        static CustomLogger customLog = null;
+
         // Static list of numerical data types for performing numerical analysis on
         static readonly List<string> numericalTypes = new List<string> { "int", "short", "ushort", "long", "uint", "ulong", "float", "double", "decimal" };
 
@@ -35,13 +39,31 @@ namespace data_analysis
             [HttpTrigger(AuthorizationLevel.Function, "get", Route = null)] HttpRequest req,
             ILogger log)
         {
+
             log.LogInformation("Data analysis function received a request");
+
+            // Connect to our CustomLogger instance
+            if (customLog is null)
+            {
+                try
+                {
+                    customLog = new CustomLogger("DataAnalysis");
+                }
+                catch (Exception e)
+                {
+                    log.LogError("Failed connecting to custom logger: " + e);
+                    return new InternalServerErrorResult();
+                }
+            }
+
+            customLog.RawLog("INFO", "Data analysis function received a request");
 
             // Retrieve the GUID generated for this specific configuration
             string guid = req.Headers["Config-GUID"];
             if (guid is null)
             {
                 log.LogError("Error retrieving Config-GUID header");
+                customLog.RawLog("ERROR", "Error retrieving Config-GUID header");
                 return new BadRequestObjectResult("Error retrieving Config-GUID header");
             }
 
@@ -60,6 +82,7 @@ namespace data_analysis
                 catch (Exception e)
                 {
                     log.LogError("Error connecting to MongoDB database: " + e.Message);
+                    customLog.RawLog("FATAL", "Error connecting to MongoDB database: " + e.Message);
                     return new InternalServerErrorResult();
                 }
             }
@@ -73,6 +96,7 @@ namespace data_analysis
                 catch (Exception e)
                 {
                     log.LogError("Error retrieving object collection from MongoDB database: " + e.Message);
+                    customLog.RawLog("ERROR", "Error retrieving object collection from MongoDB database: " + e.Message);
                     return new InternalServerErrorResult();
                 }
             }
@@ -89,6 +113,7 @@ namespace data_analysis
             catch (Exception e)
             {
                 log.LogError("Error retrieving configuration for data: " + e.Message);
+                customLog.RawLog("ERROR", "Error retrieving configuration for data: " + e.Message);
                 return new BadRequestObjectResult("Error retrieving configuration for data: " + e.Message);
             }
 
@@ -103,6 +128,7 @@ namespace data_analysis
             catch (Exception e)
             {
                 log.LogError("Error retrieving analysis for data: " + e.Message);
+                customLog.RawLog("ERROR", "Error retrieving analysis for data: " + e.Message);
                 return new BadRequestObjectResult("Error retrieving configuration for data: " + e.Message);
             }
 
@@ -113,6 +139,7 @@ namespace data_analysis
             analysis.StatisticalAnalysis = statisticalAnalysis;
 
             // Return the completed analysis to the requestor
+            customLog.RawLog("INFO", "Successfully generated and returned analysis for ID: "+ guid);
             return new OkObjectResult(analysis.ToJson());
         }
 
