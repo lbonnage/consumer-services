@@ -40,18 +40,18 @@ namespace data_analysis
             ILogger log)
         {
 
-            log.LogInformation("Data analysis function received a request");
+            ////log.LogInformation("Data analysis function received a request");
 
             // Connect to our CustomLogger instance
             if (customLog is null)
             {
                 try
                 {
-                    customLog = new CustomLogger("DataAnalysis");
+                    customLog = new CustomLogger("362043e7-c575-4a03-9c75-edda0be22351");
                 }
                 catch (Exception e)
                 {
-                    log.LogError("Failed connecting to custom logger: " + e);
+                    //log.LogError("Failed connecting to custom logger: " + e);
                     return new InternalServerErrorResult();
                 }
             }
@@ -62,7 +62,7 @@ namespace data_analysis
             string guid = req.Headers["Config-GUID"];
             if (guid is null)
             {
-                log.LogError("Error retrieving Config-GUID header");
+                //log.LogError("Error retrieving Config-GUID header");
                 customLog.RawLog("ERROR", "Error retrieving Config-GUID header");
                 return new BadRequestObjectResult("Error retrieving Config-GUID header");
             }
@@ -70,18 +70,18 @@ namespace data_analysis
             // In order to preserve the MongoDB client connection across Service calls, perform this check and only connect if necessary
             if (mongoClient is null)
             {
-                log.LogInformation("Connecting to MongoDB Database...");
+                //log.LogInformation("Connecting to MongoDB Database...");
                 try
                 {
                     mongoClient = new MongoClient(System.Environment.GetEnvironmentVariable("MongoDBAtlasConnectionString"));
                     mongoConsumerDatabase = mongoClient.GetDatabase(System.Environment.GetEnvironmentVariable("DeploymentEnvironment"));
                     mongoConfigurationCollection = mongoConsumerDatabase.GetCollection<BsonDocument>("configurations");
                     mongoAnalysisCollection = mongoConsumerDatabase.GetCollection<AnalysisDocument>("analysis");
-                    log.LogInformation("Connected to MongoDB Database");
+                    //log.LogInformation("Connected to MongoDB Database");
                 }
                 catch (Exception e)
                 {
-                    log.LogError("Error connecting to MongoDB database: " + e.Message);
+                    //log.LogError("Error connecting to MongoDB database: " + e.Message);
                     customLog.RawLog("FATAL", "Error connecting to MongoDB database: " + e.Message);
                     return new InternalServerErrorResult();
                 }
@@ -95,7 +95,7 @@ namespace data_analysis
                 }
                 catch (Exception e)
                 {
-                    log.LogError("Error retrieving object collection from MongoDB database: " + e.Message);
+                    //log.LogError("Error retrieving object collection from MongoDB database: " + e.Message);
                     customLog.RawLog("ERROR", "Error retrieving object collection from MongoDB database: " + e.Message);
                     return new InternalServerErrorResult();
                 }
@@ -103,7 +103,7 @@ namespace data_analysis
 
 
             // Retrieve the correct configuration document from the MongoDB database
-            log.LogInformation("Attempting to retrieve configuration for ID: " + guid);
+            //log.LogInformation("Attempting to retrieve configuration for ID: " + guid);
             BsonDocument config;
             try
             {
@@ -112,13 +112,13 @@ namespace data_analysis
             }
             catch (Exception e)
             {
-                log.LogError("Error retrieving configuration for data: " + e.Message);
+                //log.LogError("Error retrieving configuration for data: " + e.Message);
                 customLog.RawLog("ERROR", "Error retrieving configuration for data: " + e.Message);
                 return new BadRequestObjectResult("Error retrieving configuration for data: " + e.Message);
             }
 
             // Retrieve the current analysis for this ID from the database
-            log.LogInformation("Attempting to retrieve analysis for ID: " + guid);
+            //log.LogInformation("Attempting to retrieve analysis for ID: " + guid);
             AnalysisDocument analysis;
             try
             {
@@ -127,7 +127,7 @@ namespace data_analysis
             }
             catch (Exception e)
             {
-                log.LogError("Error retrieving analysis for data: " + e.Message);
+                //log.LogError("Error retrieving analysis for data: " + e.Message);
                 customLog.RawLog("ERROR", "Error retrieving analysis for data: " + e.Message);
                 return new BadRequestObjectResult("Error retrieving configuration for data: " + e.Message);
             }

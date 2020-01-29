@@ -57,18 +57,18 @@ namespace data_storage
             ILogger log)
         {
 
-            log.LogInformation("DataStorage function received a request");
+            //log.LogInformation("DataStorage function received a request");
 
             // Connect to our CustomLogger instance
             if (customLog is null)
             {
                 try
                 {
-                    customLog = new CustomLogger("DataStorage");
+                    customLog = new CustomLogger("af437aec-2d91-43d1-9d05-f246fc9a55a0");
                 }
                 catch (Exception e)
                 {
-                    log.LogError("Failed connecting to custom logger: " + e);
+                    //log.LogError("Failed connecting to custom logger: " + e);
                     return new InternalServerErrorResult();
                 }
             }
@@ -79,11 +79,11 @@ namespace data_storage
             string guid = req.Headers["Config-GUID"];
             if (guid is null)
             {
-                log.LogError("Error retrieving Config-GUID header");
+                //log.LogError("Error retrieving Config-GUID header");
                 customLog.RawLog("ERROR", "Error retrieving Config-GUID header");
                 return new BadRequestObjectResult("Error retrieving Config-GUID header");
             }
-            log.LogInformation("Retrieved ID: " + guid);
+            //log.LogInformation("Retrieved ID: " + guid);
             
             // Parse the message body
             BsonDocument document;
@@ -95,7 +95,7 @@ namespace data_storage
             }
             catch (Exception e)
             {
-                log.LogError("Error parsing data: " + e.Message);
+                //log.LogError("Error parsing data: " + e.Message);
                 customLog.RawLog("ERROR", "Error parsing data: " + e.Message);
                 return new BadRequestObjectResult("Error parsing data: " + e.Message);
             }
@@ -103,18 +103,18 @@ namespace data_storage
             // In order to preserve the MongoDB client connection across Service calls, perform this check and only connect if necessary
             if (mongoClient is null)
             {
-                log.LogInformation("Connecting to MongoDB Database...");
+                //log.LogInformation("Connecting to MongoDB Database...");
                 try
                 {
                     mongoClient = new MongoClient(System.Environment.GetEnvironmentVariable("MongoDBAtlasConnectionString"));
                     mongoConsumerDatabase = mongoClient.GetDatabase(System.Environment.GetEnvironmentVariable("DeploymentEnvironment"));
                     mongoConfigurationCollection = mongoConsumerDatabase.GetCollection<BsonDocument>("configurations");
                     mongoAnalysisCollection = mongoConsumerDatabase.GetCollection<AnalysisDocument>("analysis");
-                    log.LogInformation("Connected to MongoDB Database");
+                    //log.LogInformation("Connected to MongoDB Database");
                 }
                 catch (Exception e)
                 {
-                    log.LogError("Error connecting to MongoDB database: " + e.Message);
+                    //log.LogError("Error connecting to MongoDB database: " + e.Message);
                     customLog.RawLog("FATAL", "Error connecting to MongoDB database: " + e.Message);
                     return new InternalServerErrorResult();
                 }
@@ -129,14 +129,14 @@ namespace data_storage
                 }
                 catch (Exception e)
                 {
-                    log.LogError("Error retrieving object collection from MongoDB database: " + e.Message);
+                    //log.LogError("Error retrieving object collection from MongoDB database: " + e.Message);
                     customLog.RawLog("ERROR", "Error retrieving object collection from MongoDB database: " + e.Message);
                     return new InternalServerErrorResult();
                 }
             }
 
             // Retrieve the correct configuration document from the MongoDB database
-            log.LogInformation("Attempting to retrieve configuration for ID: " + guid);
+            //log.LogInformation("Attempting to retrieve configuration for ID: " + guid);
             BsonDocument config;
             try
             {
@@ -145,16 +145,16 @@ namespace data_storage
             }
             catch (Exception e)
             {
-                log.LogError("Error retrieving configuration for data: " + e.Message);
+                //log.LogError("Error retrieving configuration for data: " + e.Message);
                 customLog.RawLog("ERROR", "Error retrieving configuration for data: " + e.Message);
                 return new BadRequestObjectResult("Error retrieving configuration for data: " + e.Message);
             }
-            log.LogInformation("Retrieved configuration: " + config.GetValue("field_attributes").ToString());
+            //log.LogInformation("Retrieved configuration: " + config.GetValue("field_attributes").ToString());
 
             // Now you must verify the inputted object data against the configuration
             int badValuesCount, missingFieldsCount, extraFieldsCount;
             (badValuesCount, missingFieldsCount, extraFieldsCount) = RobustnessAnalysis(document, config, log);
-            log.LogInformation("Performed Robustness Analysis: " + badValuesCount + " " + missingFieldsCount + " " + extraFieldsCount);
+            //log.LogInformation("Performed Robustness Analysis: " + badValuesCount + " " + missingFieldsCount + " " + extraFieldsCount);
             customLog.RawLog("INFO", "Performed Robustness Analysis: " + badValuesCount + " " + missingFieldsCount + " " + extraFieldsCount);
 
             // Update the analysis in the MongoDB database with these new values
@@ -169,28 +169,28 @@ namespace data_storage
                 mongoAnalysisCollection.UpdateOne(filter, update);
             } catch (Exception e)
             {
-                log.LogError("Failed updating analysis document in MongoDB database: " + e.Message);
+                //log.LogError("Failed updating analysis document in MongoDB database: " + e.Message);
                 customLog.RawLog("ERROR", "Failed updating analysis document in MongoDB database: " + e.Message);
                 return new InternalServerErrorResult();
             }
 
             if (badValuesCount > 0 || missingFieldsCount > 0 || extraFieldsCount > 0)
             {
-                log.LogInformation("Record had some issue, not inserting into database");
+                //log.LogInformation("Record had some issue, not inserting into database");
                 customLog.RawLog("ERROR", "Record had some issue, not inserting into database");
                 return new BadRequestObjectResult("Record had some issue, not inserting into database");
             }
             else
             {
                 // Insert the received object into the MongoDB object collection
-                log.LogInformation("Inserting document into MongoDB");
+                //log.LogInformation("Inserting document into MongoDB");
                 try
                 {
                     mongoObjectCollections[guid].InsertOne(document);
                 }
                 catch (Exception e)
                 {
-                    log.LogError("Failed inserting document into MongoDB database: " + e.Message);
+                    //log.LogError("Failed inserting document into MongoDB database: " + e.Message);
                     customLog.RawLog("ERROR", "Failed inserting document into MongoDB database: " + e.Message);
                     return new InternalServerErrorResult();
                 }
@@ -263,7 +263,7 @@ namespace data_storage
                     } else
                     {
                         badValuesCount++;
-                        log.LogError("Incorrect value type.  Received " + fieldType + " when we expected " + expectedType + ".");
+                        //log.LogError("Incorrect value type.  Received " + fieldType + " when we expected " + expectedType + ".");
                     }
 
 
@@ -271,7 +271,7 @@ namespace data_storage
                 {
                     extraFields.Add(name);
                     extraFieldsCount++;
-                    log.LogError("Extra field detected.  Received field " + name + ".");
+                    //log.LogError("Extra field detected.  Received field " + name + ".");
                 }
 
             }
@@ -282,7 +282,7 @@ namespace data_storage
                 if (!actualFields.Contains(expectedField))
                 {
                     missingFieldsCount++;
-                    log.LogError("Missing field detected.  Missing field " + expectedField + ".");
+                    //log.LogError("Missing field detected.  Missing field " + expectedField + ".");
                 }
             }
 
