@@ -1,7 +1,7 @@
 
 # Warmup Project Consumer
 
-Navigation: [Project Wiki](https://laser.cs.rice.edu/classes/comp410/s20/_layouts/15/start.aspx#/SitePages/Warmup%20Team%20B.aspx) | [Producer Repository](https://example.com) | **Consumer Repository**
+Navigation: [Project Wiki](https://laser.cs.rice.edu/classes/comp410/s20/_layouts/15/start.aspx#/SitePages/Warmup%20Team%20A.aspx) | [Producer Repository](https://example.com) | **Consumer Repository**
 
 ## Description
 This is the source code for Team A's Warmup Project Consumer.  This consumer is capable of accepting and analyzing highly-customizable data records sent via HTTP.
