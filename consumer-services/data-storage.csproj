@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>netcoreapp2.1</TargetFramework>
     <AzureFunctionsVersion>v2</AzureFunctionsVersion>
@@ -9,6 +9,7 @@
     <PackageReference Include="MongoDB.Bson" Version="2.10.1" />
     <PackageReference Include="MongoDB.Driver" Version="2.10.1" />
     <PackageReference Include="Npgsql" Version="4.1.2" />
+    <PackageReference Include="TestInstrumentation" Version="1.0.4" />
   </ItemGroup>
   <ItemGroup>
     <None Update="host.json">

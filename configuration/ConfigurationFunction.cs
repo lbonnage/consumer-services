@@ -12,6 +12,7 @@ using MongoDB.Bson;
 using System.Web.Http;
 using MongoDB.Bson.Serialization.Attributes;
 using System.Collections.Generic;
+using TestInstrumentation;
 
 namespace configuration
 {
@@ -24,6 +25,9 @@ namespace configuration
         static IMongoCollection<BsonDocument> mongoConfigurationCollection = null;
         static IMongoCollection<AnalysisDocument> mongoAnalysisCollection = null;
 
+        // Static handle to our CustomLogger
+        static CustomLogger customLog = null;
+
         // Static list of numerical data types for performing numerical analysis on
         static readonly List<string> numericalTypes = new List<string> { "int", "short", "ushort", "long", "uint", "ulong", "float", "double", "decimal" };
 
@@ -32,13 +36,30 @@ namespace configuration
             [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
             ILogger log)
         {
-            log.LogInformation("Configuration function received a request.");
+
+            log.LogInformation("Configuration function received a request");
+
+            // Connect to our CustomLogger instance
+            if (customLog is null)
+            {
+                try
+                {
+                    customLog = new CustomLogger("ConfigurationService");
+                } catch (Exception e)
+                {
+                    log.LogError("Failed connecting to custom logger: " + e);
+                    return new InternalServerErrorResult();
+                }
+            }
+
+            customLog.RawLog("INFO", "Configuration function received a request");
 
             // Retrieve the GUID generated for this specific configuration
             string guid = req.Headers["Config-GUID"];
             if (guid is null)
             {
                 log.LogError("Error retrieving Config-GUID header");
+                customLog.RawLog("ERROR", "Error retrieving Config-GUID header");
                 return new BadRequestObjectResult("Error retrieving Config-GUID header");
             }
 
@@ -53,6 +74,7 @@ namespace configuration
             catch (Exception e)
             {
                 log.LogError("Error parsing data: " + e.Message);
+                customLog.RawLog("ERROR", "Error parsing data: " + e.Message);
                 return new BadRequestObjectResult("Error parsing data: " + e.Message);
             }
 
@@ -71,6 +93,7 @@ namespace configuration
                 catch (Exception e)
                 {
                     log.LogError("Error connecting to MongoDB database: " + e.Message);
+                    customLog.RawLog("FATAL", "Error connecting to MongoDB database: " + e.Message);
                     return new InternalServerErrorResult();
                 }
             }
@@ -92,6 +115,7 @@ namespace configuration
             catch (Exception e)
             {
                 log.LogError("Failed inserting configuration into MongoDB database: " + e.Message);
+                customLog.RawLog("ERROR", "Failed inserting configuration into MongoDB database: " + e.Message);
                 return new InternalServerErrorResult();
             }
 
@@ -104,10 +128,14 @@ namespace configuration
             catch (Exception e)
             {
                 log.LogError("Failed inserting analysis into MongoDB database: " + e.Message);
+                customLog.RawLog("ERROR", "Failed inserting analysis into MongoDB database: " + e.Message);
                 return new InternalServerErrorResult();
             }
 
-            return new OkObjectResult("Succeeded in inserting configuration.");
+            log.LogInformation("Succeeded in inserting configuration for ID: " + guid);
+            customLog.RawLog("INFO", "Succeeded in inserting configuration for ID: " + guid);
+            return new OkObjectResult("Succeeded in inserting configuration for ID: " + guid);
+
         }
 
         /**
