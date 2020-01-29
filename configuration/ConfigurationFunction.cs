@@ -37,17 +37,17 @@ namespace configuration
             ILogger log)
         {
 
-            log.LogInformation("Configuration function received a request");
+            //log.LogInformation("Configuration function received a request");
 
             // Connect to our CustomLogger instance
             if (customLog is null)
             {
                 try
                 {
-                    customLog = new CustomLogger("ConfigurationService");
+                    customLog = new CustomLogger("59a4d412-0a01-4adb-b525-5272fa360563");
                 } catch (Exception e)
                 {
-                    log.LogError("Failed connecting to custom logger: " + e);
+                    //log.LogError("Failed connecting to custom logger: " + e);
                     return new InternalServerErrorResult();
                 }
             }
@@ -58,7 +58,7 @@ namespace configuration
             string guid = req.Headers["Config-GUID"];
             if (guid is null)
             {
-                log.LogError("Error retrieving Config-GUID header");
+                //log.LogError("Error retrieving Config-GUID header");
                 customLog.RawLog("ERROR", "Error retrieving Config-GUID header");
                 return new BadRequestObjectResult("Error retrieving Config-GUID header");
             }
@@ -73,7 +73,7 @@ namespace configuration
             }
             catch (Exception e)
             {
-                log.LogError("Error parsing data: " + e.Message);
+                //log.LogError("Error parsing data: " + e.Message);
                 customLog.RawLog("ERROR", "Error parsing data: " + e.Message);
                 return new BadRequestObjectResult("Error parsing data: " + e.Message);
             }
@@ -81,18 +81,18 @@ namespace configuration
             // In order to preserve the MongoDB client connection across Service calls, perform this check and only connect if necessary
             if (mongoConfigurationCollection is null)
             {
-                log.LogInformation("Connecting to MongoDB Database...");
+                //log.LogInformation("Connecting to MongoDB Database...");
                 try
                 {
                     mongoClient = new MongoClient(System.Environment.GetEnvironmentVariable("MongoDBAtlasConnectionString"));
                     mongoConsumerDatabase = mongoClient.GetDatabase(System.Environment.GetEnvironmentVariable("DeploymentEnvironment"));
                     mongoConfigurationCollection = mongoConsumerDatabase.GetCollection<BsonDocument>("configurations");
                     mongoAnalysisCollection = mongoConsumerDatabase.GetCollection<AnalysisDocument>("analysis");
-                    log.LogInformation("Connected to MongoDB Database");
+                    //log.LogInformation("Connected to MongoDB Database");
                 }
                 catch (Exception e)
                 {
-                    log.LogError("Error connecting to MongoDB database: " + e.Message);
+                    //log.LogError("Error connecting to MongoDB database: " + e.Message);
                     customLog.RawLog("FATAL", "Error connecting to MongoDB database: " + e.Message);
                     return new InternalServerErrorResult();
                 }
@@ -105,7 +105,7 @@ namespace configuration
             analysis.StatisticalAnalysis = statisticalAnalysis;
 
             // Insert the received configuration into the MongoDB configuration collection
-            log.LogInformation("Inserting configuration into MongoDB");
+            //log.LogInformation("Inserting configuration into MongoDB");
             try
             {
                 // Add the GUID specified by the producer as the unique identifier for this document.  We can now link objects to this configuration via this ID.
@@ -114,25 +114,25 @@ namespace configuration
             }
             catch (Exception e)
             {
-                log.LogError("Failed inserting configuration into MongoDB database: " + e.Message);
+                //log.LogError("Failed inserting configuration into MongoDB database: " + e.Message);
                 customLog.RawLog("ERROR", "Failed inserting configuration into MongoDB database: " + e.Message);
                 return new InternalServerErrorResult();
             }
 
             // Insert the constructed analysis document into the MongoDB analysis collection
-            log.LogInformation("Inserting analysis into MongoDB");
+            //log.LogInformation("Inserting analysis into MongoDB");
             try
             {
                 mongoAnalysisCollection.InsertOne(analysis);
             }
             catch (Exception e)
             {
-                log.LogError("Failed inserting analysis into MongoDB database: " + e.Message);
+                //log.LogError("Failed inserting analysis into MongoDB database: " + e.Message);
                 customLog.RawLog("ERROR", "Failed inserting analysis into MongoDB database: " + e.Message);
                 return new InternalServerErrorResult();
             }
 
-            log.LogInformation("Succeeded in inserting configuration for ID: " + guid);
+            //log.LogInformation("Succeeded in inserting configuration for ID: " + guid);
             customLog.RawLog("INFO", "Succeeded in inserting configuration for ID: " + guid);
             return new OkObjectResult("Succeeded in inserting configuration for ID: " + guid);
 
